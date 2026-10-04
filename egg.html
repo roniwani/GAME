@@ -3,219 +3,268 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Smile Pet</title>
+<title>Smile Pet - Interactive</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#101522;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
-#game{width:100vw;height:100vh;display:block}
-#tip{position:fixed;left:16px;bottom:14px;background:#0c1220dd;border:1px solid #ffffff18;border-radius:12px;padding:9px 13px;color:#b9c7df;font-size:12px}
-button{font:inherit}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101827;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+canvas{display:block;width:100vw;height:100vh}
+#hint{position:fixed;left:16px;bottom:14px;padding:9px 13px;border-radius:12px;background:#09101ddd;border:1px solid #ffffff1c;color:#d9e3f7;font-size:12px;pointer-events:none}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="tip">ご飯・ボール・休むは画面上で操作できます　/　Rでリセット</div>
+<div id="hint">🎾 ボールを持ったらカーソルを動かして位置を決め、クリックで投げる　🍖 ご飯もカーソルで運べる</div>
 <script>
-const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
-let W,H,D; function resize(){D=devicePixelRatio||1;W=innerWidth;H=innerHeight;canvas.width=W*D;canvas.height=H*D;canvas.style.width=W+"px";canvas.style.height=H+"px";ctx.setTransform(D,0,0,D,0,0)} addEventListener("resize",resize);resize();
+const cv=document.getElementById("game"),ctx=cv.getContext("2d");
+let W,H,D;
+function resize(){D=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*D;cv.height=H*D;cv.style.width=W+"px";cv.style.height=H+"px";ctx.setTransform(D,0,0,D,0,0)}
+addEventListener("resize",resize);resize();
 
-const saveKey="smilePetSaveV1";
-let data;
-function fresh(){return{name:"Mochi",level:1,xp:0,coins:120,hunger:82,happy:78,energy:90,health:100,age:0,petType:"cat",evolution:0,feedCd:0,playCd:0,saveTime:Date.now()}}
-try{data=JSON.parse(localStorage.getItem(saveKey))||fresh()}catch{data=fresh()}
-let msg="Mochiと楽しく暮らそう！",msgT=220,click={x:0,y:0,t:0},particles=[];
-let action="none",actionT=0,food={x:0,y:0},ball={x:0,y:0,phase:"none"};
+const K={};addEventListener("keydown",e=>{K[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==="r")reset()});
+addEventListener("keyup",e=>K[e.key.toLowerCase()]=false);
 
-function save(){data.saveTime=Date.now();localStorage.setItem(saveKey,JSON.stringify(data));toast("セーブしたよ！")}
-function reset(){if(confirm("セーブデータを消して最初から遊びますか？")){data=fresh();save();toast("最初からスタート！")}}
-addEventListener("keydown",e=>{if(e.key.toLowerCase()==="r")reset(); if(e.key===" "){e.preventDefault();play()}});
-canvas.addEventListener("click",e=>{
- click.x=e.clientX;click.y=e.clientY;click.t=12;
- if(action==="feeding"){
-   if(dist(click,{x:W*.5,y:H*.51})<175)finishFeed();
-   return;
+let saveKey="smilePetInteractive";
+let data=JSON.parse(localStorage.getItem(saveKey)||"null")||{
+ name:"Mochi",level:1,xp:0,coins:150,hunger:82,happy:82,energy:90,health:100,evolution:0
+};
+function save(){localStorage.setItem(saveKey,JSON.stringify(data));message("💾 セーブしたよ！")}
+function reset(){if(confirm("セーブデータをリセットしますか？")){localStorage.removeItem(saveKey);location.reload()}}
+
+let mouse={x:W/2,y:H/2,down:false};
+cv.addEventListener("mousemove",e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+cv.addEventListener("mousedown",e=>{mouse.down=true;click(e.clientX,e.clientY)});
+cv.addEventListener("mouseup",()=>mouse.down=false);
+cv.addEventListener("mouseleave",()=>mouse.down=false);
+
+let state="idle",timer=0,food={x:0,y:0},ball={x:0,y:0,vx:0,vy:0,phase:"none",targetX:0,targetY:0};
+let pet={x:W*.5,y:H*.54,vx:0,vy:0,face:"happy",carryBall:false};
+let messageText="Mochiと遊ぼう！",messageTime=180;
+let particles=[];
+
+function message(t){messageText=t;messageTime=150}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function addXP(n){
+ data.xp+=n;
+ const need=100+data.level*40;
+ if(data.xp>=need){
+  data.xp-=need;data.level++;data.coins+=50;
+  if(data.level>=5&&data.evolution<1)data.evolution=1;
+  if(data.level>=10&&data.evolution<2)data.evolution=2;
+  if(data.level>=15&&data.evolution<3)data.evolution=3;
+  message("✨ レベルアップ！ "+data.name+" が成長した！");
+  burst(pet.x,pet.y,"#ffd45e",24);
  }
- if(action==="ball"){
-   if(ball.phase==="held" && dist(click,ball)<100)throwBall();
-   return;
- }
- if(hit(buttons.feed))feed();
- else if(hit(buttons.play))play();
- else if(hit(buttons.rest))rest();
- else if(hit(buttons.save))save();
- else if(dist(click,{x:W*.5,y:H*.51})<150)petTap();
-});
-function hit(b){return click.x>b.x&&click.x<b.x+b.w&&click.y>b.y&&click.y<b.y+b.h}
-function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
-function toast(t){msg=t;msgT=150}
-function addXp(n){data.xp+=n;let need=100+data.level*35;if(data.xp>=need){data.xp-=need;data.level++;data.coins+=50;toast("🎉 レベル "+data.level+"！ +50コイン");if(data.level%5===0&&data.evolution<2){data.evolution++;toast("✨ ペットが進化した！")}}}
-function feed(){
- if(action!=="none")return toast("今はペットのお世話中！");
- if(data.feedCd>0)return toast("少し待ってね 🍖");
- if(data.hunger>=98)return toast("おなかいっぱい！");
- data.coins=Math.max(0,data.coins-5); data.feedCd=55;
- action="feeding"; actionT=0; food={x:W*.5+95,y:H*.51};
- toast("🍖 ご飯を持ったよ！ペットに渡してね！");
 }
-function finishFeed(){
- data.hunger=Math.min(100,data.hunger+28);
- data.health=Math.min(100,data.health+5);
- addXp(20); burst(W*.5,H*.51,"#ffcf68",14);
- toast("😋 おいしい！ご飯を食べたよ！");
- action="none";actionT=0;
-}
-function play(){
- if(action!=="none")return toast("今はペットのお世話中！");
- if(data.energy<12)return toast("元気が足りないよ 💤");
- action="ball";actionT=0;ball={x:W*.5+100,y:H*.51+25,phase:"held"};
- toast("🎾 ボールを持った！ボールをクリックして投げよう！");
-}
-function throwBall(){
- if(action!=="ball"||ball.phase!=="held")return;
- ball.phase="flying";ball.x=W*.78;ball.y=H*.40;actionT=0;
- data.energy=Math.max(0,data.energy-10);
- toast("🎾 それっ！取りに行った！");
-}
-function finishPlay(){
- data.happy=Math.min(100,data.happy+24);data.coins+=8;addXp(25);
- burst(W*.5,H*.51,"#ff8bc5",16);
- toast("🎾 ボールを取ってきた！ +8コイン");
- action="none";ball.phase="none";actionT=0;
-}
-function rest(){
- if(action!=="none")return toast("今はペットのお世話中！");
- action="rest";actionT=0;toast("💤 すやすや…");
-}
-function petTap(){data.happy=Math.min(100,data.happy+3);addXp(4);burst(click.x,click.y,"#fff",5);toast("❤️ なでなでした！")}
-function burst(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*4,vy:(Math.random()-1.2)*4,a:1,color})}
+function burst(x,y,col,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*5,vy:(Math.random()-1.3)*5,a:1,col})}
+
+function button(x,y,w,h){return mouse.x>x&&mouse.x<x+w&&mouse.y>y&&mouse.y<y+h}
 
 let buttons={};
-function round(x,y,w,h,r=16){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
-function stat(label,val,x,y,w){ctx.fillStyle="#0a1020";round(x,y,w,34,12);ctx.fillStyle="#26344d";round(x+2,y+2,w-4,30,10);ctx.fillStyle=val>60?"#61e5a2":val>30?"#ffd166":"#ff7088";round(x+4,y+4,(w-8)*val/100,26,8);ctx.fillStyle="#fff";ctx.font="12px system-ui";ctx.fillText(label+"  "+Math.round(val)+"%",x+12,y+22)}
+function click(mx,my){
+ mouse.x=mx;mouse.y=my;
 
+ // Active feeding: move food with cursor and feed when close to mouth.
+ if(state==="feeding"){
+   if(distance({x:mx,y:my},{x:pet.x,y:pet.y-18})<75){
+     finishFeed();
+   }else message("🍖 もう少しペットの口元へ！");
+   return;
+ }
+ // Active ball: cursor controls held ball; click throws it.
+ if(state==="holdingBall"){
+   throwBall();
+   return;
+ }
+ if(state==="resting")return;
+
+ if(button("🍖"))startFeed();
+ else if(button("🎾"))startBall();
+ else if(button("💤"))startRest();
+ else if(button("💾"))save();
+ else if(distance({x:mx,y:my},pet)<145){
+   data.happy=Math.min(100,data.happy+3);addXP(3);burst(mx,my,"#ff9bc9",5);message("❤️ なでなでした！");
+ }
+}
+function startFeed(){
+ if(data.hunger>=97)return message("😋 もうおなかいっぱい！");
+ if(data.coins<5)return message("🪙 コインが足りないよ！");
+ data.coins-=5;state="feeding";timer=0;pet.face="excited";message("🍖 ご飯を持ったよ！カーソルで口元へ運ぼう！");
+}
+function finishFeed(){
+ data.hunger=Math.min(100,data.hunger+30);data.health=Math.min(100,data.health+5);
+ addXP(20);state="eating";timer=0;pet.face="eating";message("😋 もぐもぐ……おいしい！");
+ burst(pet.x,pet.y-20,"#ffd46b",12);
+}
+function startBall(){
+ if(data.energy<15)return message("⚡ 元気が足りないよ！");
+ state="holdingBall";timer=0;pet.face="excited";
+ ball.phase="held";message("🎾 ボールを持ったよ！カーソルを動かして投げる場所を決めよう！");
+}
+function throwBall(){
+ if(ball.phase!=="held")return;
+ const sx=pet.x+18,sy=pet.y-25;
+ const tx=clamp(mouse.x,260,W-80),ty=clamp(mouse.y,130,H-150);
+ ball.x=sx;ball.y=sy;ball.targetX=tx;ball.targetY=ty;
+ const dx=tx-sx,dy=ty-sy,dist=Math.hypot(dx,dy)||1;
+ ball.vx=dx/dist*Math.min(12,5+dist/90);
+ ball.vy=dy/dist*Math.min(12,5+dist/90)-4;
+ ball.phase="flying";state="throwing";timer=0;
+ data.energy=Math.max(0,data.energy-8);
+ pet.face="excited";
+ message("🎾 それっ！取りに行こう！");
+}
+function finishBall(){
+ ball.phase="none";pet.carryBall=false;state="idle";timer=0;
+ data.happy=Math.min(100,data.happy+25);data.coins+=10;addXP(30);
+ message("🎾 ナイスキャッチ！ +10コイン");
+ burst(pet.x,pet.y-25,"#ff86be",16);
+}
+function startRest(){state="resting";timer=0;pet.face="sleep";message("💤 すやすや……")}
 function drawPet(){
- const x=W*.5,y=H*.52;
- let scale=Math.min(W,H)/800; scale=Math.max(.75,Math.min(1.25,scale));
- ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
- let bob=Math.sin(performance.now()/350)*5;
- if(action==="rest")bob=Math.sin(performance.now()/650)*2;
- let body=data.evolution===0?"#f5c7a9":data.evolution===1?"#a9ddff":"#d4a7ff";
+ let s=Math.max(.72,Math.min(1.18,Math.min(W,H)/800));
+ ctx.save();ctx.translate(pet.x,pet.y);ctx.scale(s,s);
+ let body=data.evolution===0?"#f4c3a4":data.evolution===1?"#9fdcff":data.evolution===2?"#c4a0ff":"#ffe08b";
+ let bob=state==="resting"?Math.sin(timer/18)*2:Math.sin(performance.now()/250)*3;
  ctx.translate(0,bob);
 
- ctx.fillStyle="#0005";ctx.beginPath();ctx.ellipse(0,105,100,22,0,0,7);ctx.fill();
+ ctx.fillStyle="#0004";ctx.beginPath();ctx.ellipse(0,102,95,20,0,0,7);ctx.fill();
  ctx.fillStyle=body;
- ctx.beginPath();ctx.moveTo(-82,-72);ctx.lineTo(-62,-140);ctx.lineTo(-25,-91);ctx.fill();
- ctx.beginPath();ctx.moveTo(82,-72);ctx.lineTo(62,-140);ctx.lineTo(25,-91);ctx.fill();
- ctx.beginPath();ctx.ellipse(0,10,92,105,0,0,Math.PI*2);ctx.fill();
- ctx.fillStyle="#fff6";ctx.beginPath();ctx.ellipse(0,40,56,60,0,0,7);ctx.fill();
+ ctx.beginPath();ctx.moveTo(-78,-62);ctx.lineTo(-58,-135);ctx.lineTo(-22,-86);ctx.fill();
+ ctx.beginPath();ctx.moveTo(78,-62);ctx.lineTo(58,-135);ctx.lineTo(22,-86);ctx.fill();
+ ctx.beginPath();ctx.ellipse(0,12,88,98,0,0,7);ctx.fill();
 
- ctx.strokeStyle="#192036";ctx.lineWidth=5;ctx.lineCap="round";
- if(action==="rest"){
-   ctx.beginPath();ctx.moveTo(-42,-20);ctx.lineTo(-22,-14);ctx.moveTo(22,-14);ctx.lineTo(42,-20);ctx.stroke();
+ ctx.fillStyle="#fff6";ctx.beginPath();ctx.ellipse(0,42,53,57,0,0,7);ctx.fill();
+
+ // face
+ if(pet.face==="sleep"){
+  ctx.strokeStyle="#182137";ctx.lineWidth=5;ctx.lineCap="round";
+  ctx.beginPath();ctx.moveTo(-43,-20);ctx.lineTo(-24,-14);ctx.moveTo(24,-14);ctx.lineTo(43,-20);ctx.stroke();
+  ctx.beginPath();ctx.arc(0,6,9,0,7);ctx.stroke();
  }else{
-   ctx.fillStyle="#192036";ctx.beginPath();ctx.arc(-31,-20,10,0,7);ctx.arc(31,-20,10,0,7);ctx.fill();
-   ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-28,-23,3,0,7);ctx.arc(34,-23,3,0,7);ctx.fill();
+  ctx.fillStyle="#182137";ctx.beginPath();ctx.arc(-30,-20,10,0,7);ctx.arc(30,-20,10,0,7);ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-27,-23,3,0,7);ctx.arc(33,-23,3,0,7);ctx.fill();
+  ctx.strokeStyle="#182137";ctx.lineWidth=4;
+  ctx.beginPath();ctx.arc(0,0,pet.face==="excited"?18:14,.15,Math.PI-.15);ctx.stroke();
  }
- ctx.strokeStyle="#192036";ctx.lineWidth=4;
- if(action==="rest"){ctx.beginPath();ctx.arc(0,8,9,0,Math.PI*2);ctx.stroke()}
- else if(action==="ball"||action==="feeding"){ctx.beginPath();ctx.arc(0,-1,17,.2,Math.PI-.2);ctx.stroke()}
- else{ctx.beginPath();ctx.arc(0,0,15,.2,Math.PI-.2);ctx.stroke()}
-
  if(data.evolution>=2){
-   ctx.fillStyle="#ffd45e";ctx.beginPath();
-   ctx.moveTo(-38,-120);ctx.lineTo(-28,-150);ctx.lineTo(-5,-128);ctx.lineTo(14,-154);
-   ctx.lineTo(25,-126);ctx.lineTo(48,-143);ctx.lineTo(43,-112);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#ffd45e";ctx.beginPath();ctx.moveTo(-38,-118);ctx.lineTo(-27,-150);ctx.lineTo(-6,-126);ctx.lineTo(14,-153);ctx.lineTo(26,-124);ctx.lineTo(49,-142);ctx.lineTo(43,-110);ctx.closePath();ctx.fill();
  }
- if(action==="rest"){
-   ctx.fillStyle="#a9c7ff";ctx.font="bold 25px system-ui";ctx.fillText("Z",62,-78);
-   ctx.font="bold 18px system-ui";ctx.fillText("z",83,-100);
+ if(data.evolution>=3){
+  ctx.fillStyle="#ffffffaa";ctx.beginPath();ctx.arc(-85,5,12,0,7);ctx.arc(85,5,12,0,7);ctx.fill();
  }
  ctx.restore();
 }
+function drawBall(x,y,held=false){
+ ctx.save();ctx.translate(x,y);
+ ctx.shadowBlur=held?18:8;ctx.shadowColor="#ff6eae";
+ ctx.fillStyle="#ff79b2";ctx.beginPath();ctx.arc(0,0,16,0,7);ctx.fill();ctx.shadowBlur=0;
+ ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,9,0,Math.PI*1.15);ctx.stroke();
+ ctx.restore();
+}
+function drawFood(x,y){
+ ctx.save();ctx.translate(x,y);ctx.font="38px system-ui";ctx.fillText("🍖",0,0);ctx.restore();
+}
 function draw(){
  ctx.clearRect(0,0,W,H);
- const grd=ctx.createLinearGradient(0,0,0,H);grd.addColorStop(0,"#172441");grd.addColorStop(1,"#0f1729");ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
- // decorative stars
- ctx.fillStyle="#ffffff12";for(let i=0;i<45;i++){let x=(i*137)%W,y=90+(i*83)%(Math.max(100,H-100));ctx.beginPath();ctx.arc(x,y,1.5+(i%3),0,7);ctx.fill()}
- // header
- ctx.fillStyle="#0a1020e8";ctx.fillRect(0,0,W,72);
+ let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#172744");g.addColorStop(1,"#10192b");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+
+ ctx.strokeStyle="#ffffff08";for(let x=0;x<W;x+=55){ctx.beginPath();ctx.moveTo(x,72);ctx.lineTo(x,H);ctx.stroke()}
+ for(let y=80;y<H;y+=55){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+
+ ctx.fillStyle="#080e1be8";ctx.fillRect(0,0,W,70);
  ctx.fillStyle="#fff";ctx.font="800 27px system-ui";ctx.fillText("☺ SMILE PET",22,45);
  ctx.fillStyle="#ffd45e";ctx.font="700 18px system-ui";ctx.fillText("🪙 "+data.coins,W-150,30);
- ctx.fillStyle="#aebbd5";ctx.font="12px system-ui";ctx.fillText("LV."+data.level+"  "+data.name,W-150,52);
- // side stats
- stat("🍖 おなか",data.hunger,22,92,220);
- stat("❤️ げんき",data.health,22,134,220);
- stat("😊 きもち",data.happy,22,176,220);
- stat("⚡ 元気",data.energy,22,218,220);
- // xp
- let need=100+data.level*35;
- ctx.fillStyle="#aebbd5";ctx.font="12px system-ui";ctx.fillText("NEXT LEVEL",22,278);
- ctx.fillStyle="#0a1020";round(22,287,220,15,8);ctx.fillStyle="#8f7cff";round(24,289,216*data.xp/need,11,6);
- ctx.fillStyle="#dce5fa";ctx.font="11px system-ui";ctx.fillText(Math.floor(data.xp)+" / "+need,85,301);
- // pet label
- ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="800 24px system-ui";ctx.fillText(data.name,W*.5,105);
- ctx.fillStyle="#9fb0ce";ctx.font="13px system-ui";ctx.fillText(data.evolution===0?"BABY":data.evolution===1?"GROWN":"SUPER",W*.5,128);
+ ctx.fillStyle="#aab9d5";ctx.font="12px system-ui";ctx.fillText("LV."+data.level+"  "+data.name,W-150,52);
+
+ stat("🍖 おなか",data.hunger,22,92,220);stat("❤️ げんき",data.health,22,134,220);
+ stat("😊 きもち",data.happy,22,176,220);stat("⚡ 元気",data.energy,22,218,220);
+
+ let need=100+data.level*40;ctx.fillStyle="#aab9d5";ctx.font="12px system-ui";ctx.fillText("NEXT LEVEL",22,278);
+ ctx.fillStyle="#080e1b";round(22,287,220,15,8);ctx.fillStyle="#907cff";round(24,289,216*data.xp/need,11,6);
+ ctx.fillStyle="#dce5fa";ctx.font="11px system-ui";ctx.fillText(Math.floor(data.xp)+" / "+need,88,301);
+
+ ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="800 24px system-ui";ctx.fillText(data.name,W*.5,104);
+ ctx.fillStyle="#9eb0d0";ctx.font="13px system-ui";
+ let stage=data.evolution===0?"BABY":data.evolution===1?"GROWN":data.evolution===2?"SUPER":"ULTIMATE";
+ ctx.fillText(stage,W*.5,127);ctx.textAlign="left";
+
+ // Ball throwing target marker
+ if(state==="holdingBall"){
+  ctx.setLineDash([6,6]);ctx.strokeStyle="#ff9ac8aa";ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(mouse.x,mouse.y,24,0,7);ctx.stroke();ctx.setLineDash([]);
+  drawBall(mouse.x,mouse.y,true);
+ }
+ if(state==="feeding"){
+  drawFood(mouse.x-18,mouse.y+8);
+  ctx.fillStyle="#ffffff25";ctx.beginPath();ctx.arc(pet.x,pet.y-18,75,0,7);ctx.fill();
+ }
+
  drawPet();
- if(action==="feeding"){
-   ctx.fillStyle="#0a1020e8";round(W*.5-165,135,330,42,14);
-   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
-   ctx.fillText("🍖 ご飯をペットに渡そう！",W*.5,161);ctx.textAlign="left";
-   ctx.font="38px system-ui";ctx.fillText("🍖",W*.5+95,H*.51+18);
+
+ if(state==="throwing"||state==="fetching"){
+  drawBall(ball.x,ball.y,false);
  }
- if(action==="ball"&&ball.phase==="held"){
-   ctx.fillStyle="#0a1020e8";round(W*.5-165,135,330,42,14);
-   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
-   ctx.fillText("🎾 ボールをクリックして投げよう！",W*.5,161);ctx.textAlign="left";
-   ctx.font="38px system-ui";ctx.fillText("🎾",ball.x-18,ball.y+13);
+ if(state==="fetching"){
+  ctx.fillStyle="#b9d1ff";ctx.font="700 14px system-ui";ctx.textAlign="center";ctx.fillText("🐾 ボールをくわえてる！",pet.x,pet.y-150);ctx.textAlign="left";
  }
- if(action==="rest"){
-   ctx.fillStyle="#0a1020e8";round(W*.5-170,135,340,42,14);
-   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
-   ctx.fillText("💤 ペットが気持ちよさそうに寝ています…",W*.5,161);ctx.textAlign="left";
- }
- ctx.textAlign="left";
+
  // buttons
- const bw=170,bh=56,g=16, total=bw*4+g*3,start=(W-total)/2,by=H-94;
- buttons.feed={x:start,y:by,w:bw,h:bh};buttons.play={x:start+bw+g,y:by,w:bw,h:bh};buttons.rest={x:start+(bw+g)*2,y:by,w:bw,h:bh};buttons.save={x:start+(bw+g)*3,y:by,w:bw,h:bh};
- const arr=[["🍖 ごはん","#e59b55",buttons.feed],["🎾 あそぶ","#df6fa5",buttons.play],["💤 休む","#668bd1",buttons.rest],["💾 セーブ","#64748b",buttons.save]];
- arr.forEach(([t,col,b])=>{ctx.fillStyle=col;round(b.x,b.y,b.w,b.h,16);ctx.fillStyle="#fff";ctx.font="700 15px system-ui";ctx.textAlign="center";ctx.fillText(t,b.x+b.w/2,b.y+34);ctx.textAlign="left"});
- // message
- if(msgT>0){msgT--;ctx.font="600 14px system-ui";let tw=Math.min(W-40,Math.max(250,ctx.measureText(msg).width+60));ctx.fillStyle="#080d18e8";round((W-tw)/2,145,tw,42,14);ctx.fillStyle="#fff";ctx.textAlign="center";ctx.fillText(msg,W/2,172);ctx.textAlign="left"} 
- // particles
- for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=.08;p.a-=.025;ctx.globalAlpha=Math.max(0,p.a);ctx.fillStyle=p.color;ctx.font="20px system-ui";ctx.fillText("♥",p.x,p.y)}ctx.globalAlpha=1;
- // responsive notice
- if(W<760){ctx.fillStyle="#ffcf68";ctx.font="12px system-ui";ctx.fillText("PC画面を想定しています。ブラウザを横長にすると遊びやすいよ。",22,H-115)}
+ const bw=170,bh=56,gap=16,total=bw*4+gap*3,start=(W-total)/2,by=H-94;
+ buttons.feed={x:start,y:by,w:bw,h:bh};buttons.play={x:start+bw+gap,y:by,w:bw,h:bh};
+ buttons.rest={x:start+(bw+gap)*2,y:by,w:bw,h:bh};buttons.save={x:start+(bw+gap)*3,y:by,w:bw,h:bh};
+ const arr=[["🍖 ごはん","#df9b56",buttons.feed],["🎾 あそぶ","#d86eaa",buttons.play],["💤 休む","#6588ce",buttons.rest],["💾 セーブ","#64748b",buttons.save]];
+ for(const [t,col,b] of arr){ctx.fillStyle=col;round(b.x,b.y,b.w,b.h,16);ctx.fillStyle="#fff";ctx.font="700 15px system-ui";ctx.textAlign="center";ctx.fillText(t,b.x+b.w/2,b.y+35)}
+ ctx.textAlign="left";
+
+ if(messageTime>0){messageTime--;ctx.font="700 14px system-ui";let tw=Math.min(W-30,Math.max(280,ctx.measureText(messageText).width+65));ctx.fillStyle="#080e1bea";round((W-tw)/2,145,tw,44,14);ctx.fillStyle="#fff";ctx.textAlign="center";ctx.fillText(messageText,W/2,173);ctx.textAlign="left"}
+
+ for(let i=particles.length-1;i>=0;i--){let p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.08;p.a-=.025;ctx.globalAlpha=Math.max(0,p.a);ctx.fillStyle=p.col;ctx.font="20px system-ui";ctx.fillText("♥",p.x,p.y);if(p.a<=0)particles.splice(i,1)}
+ ctx.globalAlpha=1;
 }
-function tick(){
- data.age++;
- if(data.feedCd>0)data.feedCd--;if(data.playCd>0)data.playCd--;
- if(data.age%180===0){data.hunger=Math.max(0,data.hunger-2);data.energy=Math.max(0,data.energy-1);data.happy=Math.max(0,data.happy-1)}
- if(action==="feeding"){
-   actionT++;
-   food.x=W*.5+95+Math.sin(actionT/7)*8; food.y=H*.51+5;
-   if(actionT>100)finishFeed();
- }
- if(action==="ball"){
-   actionT++;
-   if(ball.phase==="flying"){
-     ball.x-=3.4; ball.y+=Math.sin(actionT/5)*1.5;
-     if(ball.x<W*.5+35){ball.phase="returning";toast("🐾 見つけた！持って帰ってくるよ！")}
-   }else if(ball.phase==="returning"){
-     ball.x+=(W*.5+100-ball.x)*.07; ball.y+=(H*.51+25-ball.y)*.07;
-     if(Math.hypot(ball.x-(W*.5+100),ball.y-(H*.51+25))<12)finishPlay();
+function stat(label,val,x,y,w){ctx.fillStyle="#080e1b";round(x,y,w,34,12);ctx.fillStyle="#293650";round(x+2,y+2,w-4,30,10);ctx.fillStyle=val>60?"#61e5a2":val>30?"#ffd166":"#ff7189";round(x+4,y+4,(w-8)*val/100,26,8);ctx.fillStyle="#fff";ctx.font="12px system-ui";ctx.fillText(label+"  "+Math.round(val)+"%",x+12,y+22)}
+function round(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+
+let last=performance.now();
+function update(){
+ const now=performance.now(),dt=Math.min(2,(now-last)/16.67);last=now;
+ timer+=dt;
+ if(state==="eating"&&timer>80){state="idle";pet.face="happy";timer=0}
+ if(state==="throwing"){
+   ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;ball.vy+=.28*dt;ball.vx*=.995;
+   if(ball.y>H-145 || ball.x>W-45 || ball.x<245){
+    ball.x=clamp(ball.x,245,W-45);ball.y=clamp(ball.y,100,H-145);
+    state="fetching";timer=0;pet.face="excited";
+    message("🐾 ダッシュ！ボールを取りに行ってる！");
    }
  }
- if(action==="rest"){
-   actionT++;
-   if(actionT>150){
-     data.energy=Math.min(100,data.energy+32);data.health=Math.min(100,data.health+8);
-     data.hunger=Math.max(0,data.hunger-4);data.happy=Math.min(100,data.happy+5);
-     addXp(12);burst(W*.5,H*.51,"#9dbbff",12);toast("🌙 ぐっすり休んだ！元気いっぱい！");
-     action="none";actionT=0;
+ if(state==="fetching"){
+   const dx=ball.x-pet.x,dy=ball.y-pet.y,d=Math.hypot(dx,dy)||1;
+   const speed=4.5*dt;
+   pet.x+=dx/d*speed;pet.y+=dy/d*speed;
+   if(d<38){
+    pet.carryBall=true;state="returning";timer=0;
+    message("🎾 キャッチ！持って帰ってくるよ！");
    }
  }
- if(data.age%600===0)save();
- draw();requestAnimationFrame(tick)
+ if(state==="returning"){
+   const tx=W*.5,ty=H*.54,dx=tx-pet.x,dy=ty-pet.y,d=Math.hypot(dx,dy)||1;
+   pet.x+=dx/d*4.2*dt;pet.y+=dy/d*4.2*dt;ball.x=pet.x+20;ball.y=pet.y-20;
+   if(d<35)finishBall();
+ }
+ if(state==="resting"&&timer>180){
+   data.energy=Math.min(100,data.energy+35);data.health=Math.min(100,data.health+8);
+   data.happy=Math.min(100,data.happy+6);data.hunger=Math.max(0,data.hunger-4);
+   addXP(12);burst(pet.x,pet.y,"#9dbbff",12);state="idle";timer=0;pet.face="happy";message("🌙 ぐっすり休んだ！元気いっぱい！");
+ }
+ draw();requestAnimationFrame(update);
 }
-tick();
+function statDecay(){
+ data.hunger=Math.max(0,data.hunger-1);data.energy=Math.max(0,data.energy-1);data.happy=Math.max(0,data.happy-1);
+}
+setInterval(()=>{statDecay();saveSilent()},18000);
+function saveSilent(){localStorage.setItem(saveKey,JSON.stringify(data))}
+update();
 </script>
-</body></html>
+</body>
+</html>
