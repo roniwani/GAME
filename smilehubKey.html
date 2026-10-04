@@ -4,12 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>smilehub - Get Key</title>
-
   <style>
     body {
       margin: 0;
       padding: 0;
-      font-family: Arial, sans-serif;
+      font-family: 'Arial', sans-serif;
       background: #001a00;
       display: flex;
       justify-content: center;
@@ -21,6 +20,7 @@
       overflow: hidden;
     }
 
+    /* ネオン光のエフェクト */
     body::before {
       content: '';
       position: absolute;
@@ -29,17 +29,13 @@
       transform: translate(-50%, -50%);
       width: 80%;
       height: 80%;
-      background: radial-gradient(
-        ellipse,
-        rgba(0, 255, 65, 0.4) 0%,
-        rgba(0, 255, 65, 0.1) 40%,
-        transparent 70%
-      );
+      background: radial-gradient(ellipse, rgba(0, 255, 65, 0.4) 0%, rgba(0, 255, 65, 0.1) 40%, transparent 70%);
       filter: blur(60px);
       z-index: 0;
       animation: neonPulse 2s ease-in-out infinite alternate;
     }
 
+    /* 追加のネオン光（複数レイヤー） */
     body::after {
       content: '';
       position: absolute;
@@ -47,11 +43,7 @@
       left: 30%;
       width: 50%;
       height: 50%;
-      background: radial-gradient(
-        ellipse,
-        rgba(0, 255, 65, 0.2) 0%,
-        transparent 60%
-      );
+      background: radial-gradient(ellipse, rgba(0, 255, 65, 0.2) 0%, transparent 60%);
       filter: blur(80px);
       z-index: 0;
       animation: neonPulse2 3s ease-in-out infinite alternate;
@@ -66,25 +58,25 @@
     h1 {
       font-size: 3rem;
       font-weight: bold;
-      color: #fff;
-      text-shadow:
+      text-shadow: 
         0 0 10px #00ff41,
         0 0 20px #00ff41,
         0 0 40px #00ff41,
         0 0 80px #00ff41,
         0 0 120px #00ff41;
       margin-bottom: 10px;
+      color: #fff;
       animation: textGlow 1.5s ease-in-out infinite alternate;
     }
 
     h2 {
       font-size: 2rem;
-      color: #ccffcc;
-      text-shadow:
+      text-shadow: 
         0 0 10px #00ff41,
         0 0 20px #00ff41,
         0 0 40px #00ff41;
       margin-bottom: 30px;
+      color: #ccffcc;
     }
 
     .key-box {
@@ -97,7 +89,7 @@
       margin: 20px auto;
       display: inline-block;
       text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
-      box-shadow:
+      box-shadow: 
         0 0 20px rgba(0, 255, 65, 0.5),
         0 0 40px rgba(0, 255, 65, 0.3),
         inset 0 0 20px rgba(0, 255, 65, 0.1);
@@ -123,10 +115,30 @@
       overflow: hidden;
     }
 
+    button::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(45deg, #00ff41, #00cc33, #00ff41, #00cc33);
+      background-size: 400% 400%;
+      border-radius: 5px;
+      z-index: -1;
+      animation: borderGlow 3s linear infinite;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    button:hover::before {
+      opacity: 1;
+    }
+
     button:hover {
       transform: scale(1.1);
       background: rgba(0, 255, 65, 0.2);
-      box-shadow:
+      box-shadow: 
         0 0 30px rgba(0, 255, 65, 0.6),
         0 0 60px rgba(0, 255, 65, 0.4);
     }
@@ -166,14 +178,14 @@
 
     @keyframes textGlow {
       0% {
-        text-shadow:
+        text-shadow: 
           0 0 10px #00ff41,
           0 0 20px #00ff41,
           0 0 40px #00ff41,
           0 0 80px #00ff41;
       }
       100% {
-        text-shadow:
+        text-shadow: 
           0 0 20px #00ff41,
           0 0 40px #00ff41,
           0 0 60px #00ff41,
@@ -184,13 +196,13 @@
 
     @keyframes boxGlow {
       0% {
-        box-shadow:
+        box-shadow: 
           0 0 20px rgba(0, 255, 65, 0.5),
           0 0 40px rgba(0, 255, 65, 0.3),
           inset 0 0 20px rgba(0, 255, 65, 0.1);
       }
       100% {
-        box-shadow:
+        box-shadow: 
           0 0 30px rgba(0, 255, 65, 0.7),
           0 0 60px rgba(0, 255, 65, 0.5),
           0 0 80px rgba(0, 255, 65, 0.3),
@@ -211,33 +223,23 @@
     }
   </style>
 </head>
-
 <body>
   <div class="container">
     <h1>smilehub</h1>
     <h2>Get Key ↓</h2>
-
-    <div class="key-box" id="key">
-      smileingkey
-    </div>
-
+    <div class="key-box" id="key">smileingkey</div>
     <button onclick="copyKey()">Copy Key</button>
   </div>
 
   <script>
     function copyKey() {
       const key = document.getElementById("key").innerText;
-
       const tempInput = document.createElement("textarea");
       tempInput.value = key;
-
       document.body.appendChild(tempInput);
       tempInput.select();
-
       document.execCommand("copy");
-
       document.body.removeChild(tempInput);
-
       alert("Key copied: " + key);
     }
   </script>
