@@ -13,7 +13,7 @@ button{font:inherit}
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="tip">クリックでペットと遊ぶ　/　Rでセーブをリセット</div>
+<div id="tip">ご飯・ボール・休むは画面上で操作できます　/　Rでリセット</div>
 <script>
 const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
 let W,H,D; function resize(){D=devicePixelRatio||1;W=innerWidth;H=innerHeight;canvas.width=W*D;canvas.height=H*D;canvas.style.width=W+"px";canvas.style.height=H+"px";ctx.setTransform(D,0,0,D,0,0)} addEventListener("resize",resize);resize();
@@ -23,21 +23,68 @@ let data;
 function fresh(){return{name:"Mochi",level:1,xp:0,coins:120,hunger:82,happy:78,energy:90,health:100,age:0,petType:"cat",evolution:0,feedCd:0,playCd:0,saveTime:Date.now()}}
 try{data=JSON.parse(localStorage.getItem(saveKey))||fresh()}catch{data=fresh()}
 let msg="Mochiと楽しく暮らそう！",msgT=220,click={x:0,y:0,t:0},particles=[];
+let action="none",actionT=0,food={x:0,y:0},ball={x:0,y:0,phase:"none"};
 
 function save(){data.saveTime=Date.now();localStorage.setItem(saveKey,JSON.stringify(data));toast("セーブしたよ！")}
 function reset(){if(confirm("セーブデータを消して最初から遊びますか？")){data=fresh();save();toast("最初からスタート！")}}
 addEventListener("keydown",e=>{if(e.key.toLowerCase()==="r")reset(); if(e.key===" "){e.preventDefault();play()}});
 canvas.addEventListener("click",e=>{
  click.x=e.clientX;click.y=e.clientY;click.t=12;
- if(hit(buttons.feed)){feed()}else if(hit(buttons.play)){play()}else if(hit(buttons.rest)){rest()}else if(hit(buttons.save)){save()}else if(dist(click,{x:W*.5,y:H*.51})<150){petTap()}
+ if(action==="feeding"){
+   if(dist(click,{x:W*.5,y:H*.51})<175)finishFeed();
+   return;
+ }
+ if(action==="ball"){
+   if(ball.phase==="held" && dist(click,ball)<100)throwBall();
+   return;
+ }
+ if(hit(buttons.feed))feed();
+ else if(hit(buttons.play))play();
+ else if(hit(buttons.rest))rest();
+ else if(hit(buttons.save))save();
+ else if(dist(click,{x:W*.5,y:H*.51})<150)petTap();
 });
 function hit(b){return click.x>b.x&&click.x<b.x+b.w&&click.y>b.y&&click.y<b.y+b.h}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 function toast(t){msg=t;msgT=150}
 function addXp(n){data.xp+=n;let need=100+data.level*35;if(data.xp>=need){data.xp-=need;data.level++;data.coins+=50;toast("🎉 レベル "+data.level+"！ +50コイン");if(data.level%5===0&&data.evolution<2){data.evolution++;toast("✨ ペットが進化した！")}}}
-function feed(){if(data.feedCd>0)return toast("少し待ってね 🍖");if(data.hunger>=98)return toast("おなかいっぱい！");data.hunger=Math.min(100,data.hunger+25);data.health=Math.min(100,data.health+4);data.hunger=Math.min(100,data.hunger);data.coins=Math.max(0,data.coins-5);addXp(18);data.feedCd=45;burst(W*.5,H*.51,"#ffcf68",10);toast("🍖 ごはんをあげた！")}
-function play(){if(data.playCd>0)return toast("ちょっと休憩中…");if(data.energy<12)return toast("元気が足りないよ 💤");data.happy=Math.min(100,data.happy+24);data.energy=Math.max(0,data.energy-12);data.coins+=8;addXp(25);data.playCd=55;burst(W*.5,H*.51,"#ff8bc5",14);toast("🎾 いっぱい遊んだ！ +8コイン")}
-function rest(){data.energy=Math.min(100,data.energy+30);data.health=Math.min(100,data.health+7);data.hunger=Math.max(0,data.hunger-5);toast("💤 ゆっくり休んだ！");burst(W*.5,H*.51,"#9dbbff",8)}
+function feed(){
+ if(action!=="none")return toast("今はペットのお世話中！");
+ if(data.feedCd>0)return toast("少し待ってね 🍖");
+ if(data.hunger>=98)return toast("おなかいっぱい！");
+ data.coins=Math.max(0,data.coins-5); data.feedCd=55;
+ action="feeding"; actionT=0; food={x:W*.5+95,y:H*.51};
+ toast("🍖 ご飯を持ったよ！ペットに渡してね！");
+}
+function finishFeed(){
+ data.hunger=Math.min(100,data.hunger+28);
+ data.health=Math.min(100,data.health+5);
+ addXp(20); burst(W*.5,H*.51,"#ffcf68",14);
+ toast("😋 おいしい！ご飯を食べたよ！");
+ action="none";actionT=0;
+}
+function play(){
+ if(action!=="none")return toast("今はペットのお世話中！");
+ if(data.energy<12)return toast("元気が足りないよ 💤");
+ action="ball";actionT=0;ball={x:W*.5+100,y:H*.51+25,phase:"held"};
+ toast("🎾 ボールを持った！ボールをクリックして投げよう！");
+}
+function throwBall(){
+ if(action!=="ball"||ball.phase!=="held")return;
+ ball.phase="flying";ball.x=W*.78;ball.y=H*.40;actionT=0;
+ data.energy=Math.max(0,data.energy-10);
+ toast("🎾 それっ！取りに行った！");
+}
+function finishPlay(){
+ data.happy=Math.min(100,data.happy+24);data.coins+=8;addXp(25);
+ burst(W*.5,H*.51,"#ff8bc5",16);
+ toast("🎾 ボールを取ってきた！ +8コイン");
+ action="none";ball.phase="none";actionT=0;
+}
+function rest(){
+ if(action!=="none")return toast("今はペットのお世話中！");
+ action="rest";actionT=0;toast("💤 すやすや…");
+}
 function petTap(){data.happy=Math.min(100,data.happy+3);addXp(4);burst(click.x,click.y,"#fff",5);toast("❤️ なでなでした！")}
 function burst(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*4,vy:(Math.random()-1.2)*4,a:1,color})}
 
@@ -49,28 +96,41 @@ function drawPet(){
  const x=W*.5,y=H*.52;
  let scale=Math.min(W,H)/800; scale=Math.max(.75,Math.min(1.25,scale));
  ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
- const bob=Math.sin(performance.now()/350)*5;
- ctx.translate(0,bob);
- // shadow
- ctx.fillStyle="#0005";ctx.beginPath();ctx.ellipse(0,105,100,22,0,0,7);ctx.fill();
+ let bob=Math.sin(performance.now()/350)*5;
+ if(action==="rest")bob=Math.sin(performance.now()/650)*2;
  let body=data.evolution===0?"#f5c7a9":data.evolution===1?"#a9ddff":"#d4a7ff";
- // ears
- ctx.fillStyle=body;ctx.beginPath();ctx.moveTo(-82,-72);ctx.lineTo(-62,-140);ctx.lineTo(-25,-91);ctx.fill();ctx.beginPath();ctx.moveTo(82,-72);ctx.lineTo(62,-140);ctx.lineTo(25,-91);ctx.fill();
- // body
+ ctx.translate(0,bob);
+
+ ctx.fillStyle="#0005";ctx.beginPath();ctx.ellipse(0,105,100,22,0,0,7);ctx.fill();
+ ctx.fillStyle=body;
+ ctx.beginPath();ctx.moveTo(-82,-72);ctx.lineTo(-62,-140);ctx.lineTo(-25,-91);ctx.fill();
+ ctx.beginPath();ctx.moveTo(82,-72);ctx.lineTo(62,-140);ctx.lineTo(25,-91);ctx.fill();
  ctx.beginPath();ctx.ellipse(0,10,92,105,0,0,Math.PI*2);ctx.fill();
- // belly
  ctx.fillStyle="#fff6";ctx.beginPath();ctx.ellipse(0,40,56,60,0,0,7);ctx.fill();
- // eyes
- ctx.fillStyle="#192036";ctx.beginPath();ctx.arc(-31,-20,10,0,7);ctx.arc(31,-20,10,0,7);ctx.fill();
- // shine
- ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-28,-23,3,0,7);ctx.arc(34,-23,3,0,7);ctx.fill();
- // mouth
- ctx.strokeStyle="#192036";ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,15,0.2,Math.PI-.2);ctx.stroke();
- // evolution crown
- if(data.evolution>=2){ctx.fillStyle="#ffd45e";ctx.beginPath();ctx.moveTo(-38,-120);ctx.lineTo(-28,-150);ctx.lineTo(-5,-128);ctx.lineTo(14,-154);ctx.lineTo(25,-126);ctx.lineTo(48,-143);ctx.lineTo(43,-112);ctx.closePath();ctx.fill()}
+
+ ctx.strokeStyle="#192036";ctx.lineWidth=5;ctx.lineCap="round";
+ if(action==="rest"){
+   ctx.beginPath();ctx.moveTo(-42,-20);ctx.lineTo(-22,-14);ctx.moveTo(22,-14);ctx.lineTo(42,-20);ctx.stroke();
+ }else{
+   ctx.fillStyle="#192036";ctx.beginPath();ctx.arc(-31,-20,10,0,7);ctx.arc(31,-20,10,0,7);ctx.fill();
+   ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-28,-23,3,0,7);ctx.arc(34,-23,3,0,7);ctx.fill();
+ }
+ ctx.strokeStyle="#192036";ctx.lineWidth=4;
+ if(action==="rest"){ctx.beginPath();ctx.arc(0,8,9,0,Math.PI*2);ctx.stroke()}
+ else if(action==="ball"||action==="feeding"){ctx.beginPath();ctx.arc(0,-1,17,.2,Math.PI-.2);ctx.stroke()}
+ else{ctx.beginPath();ctx.arc(0,0,15,.2,Math.PI-.2);ctx.stroke()}
+
+ if(data.evolution>=2){
+   ctx.fillStyle="#ffd45e";ctx.beginPath();
+   ctx.moveTo(-38,-120);ctx.lineTo(-28,-150);ctx.lineTo(-5,-128);ctx.lineTo(14,-154);
+   ctx.lineTo(25,-126);ctx.lineTo(48,-143);ctx.lineTo(43,-112);ctx.closePath();ctx.fill();
+ }
+ if(action==="rest"){
+   ctx.fillStyle="#a9c7ff";ctx.font="bold 25px system-ui";ctx.fillText("Z",62,-78);
+   ctx.font="bold 18px system-ui";ctx.fillText("z",83,-100);
+ }
  ctx.restore();
 }
-
 function draw(){
  ctx.clearRect(0,0,W,H);
  const grd=ctx.createLinearGradient(0,0,0,H);grd.addColorStop(0,"#172441");grd.addColorStop(1,"#0f1729");ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
@@ -94,7 +154,25 @@ function draw(){
  // pet label
  ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="800 24px system-ui";ctx.fillText(data.name,W*.5,105);
  ctx.fillStyle="#9fb0ce";ctx.font="13px system-ui";ctx.fillText(data.evolution===0?"BABY":data.evolution===1?"GROWN":"SUPER",W*.5,128);
- drawPet();ctx.textAlign="left";
+ drawPet();
+ if(action==="feeding"){
+   ctx.fillStyle="#0a1020e8";round(W*.5-165,135,330,42,14);
+   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
+   ctx.fillText("🍖 ご飯をペットに渡そう！",W*.5,161);ctx.textAlign="left";
+   ctx.font="38px system-ui";ctx.fillText("🍖",W*.5+95,H*.51+18);
+ }
+ if(action==="ball"&&ball.phase==="held"){
+   ctx.fillStyle="#0a1020e8";round(W*.5-165,135,330,42,14);
+   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
+   ctx.fillText("🎾 ボールをクリックして投げよう！",W*.5,161);ctx.textAlign="left";
+   ctx.font="38px system-ui";ctx.fillText("🎾",ball.x-18,ball.y+13);
+ }
+ if(action==="rest"){
+   ctx.fillStyle="#0a1020e8";round(W*.5-170,135,340,42,14);
+   ctx.fillStyle="#fff";ctx.font="700 14px system-ui";ctx.textAlign="center";
+   ctx.fillText("💤 ペットが気持ちよさそうに寝ています…",W*.5,161);ctx.textAlign="left";
+ }
+ ctx.textAlign="left";
  // buttons
  const bw=170,bh=56,g=16, total=bw*4+g*3,start=(W-total)/2,by=H-94;
  buttons.feed={x:start,y:by,w:bw,h:bh};buttons.play={x:start+bw+g,y:by,w:bw,h:bh};buttons.rest={x:start+(bw+g)*2,y:by,w:bw,h:bh};buttons.save={x:start+(bw+g)*3,y:by,w:bw,h:bh};
@@ -111,6 +189,30 @@ function tick(){
  data.age++;
  if(data.feedCd>0)data.feedCd--;if(data.playCd>0)data.playCd--;
  if(data.age%180===0){data.hunger=Math.max(0,data.hunger-2);data.energy=Math.max(0,data.energy-1);data.happy=Math.max(0,data.happy-1)}
+ if(action==="feeding"){
+   actionT++;
+   food.x=W*.5+95+Math.sin(actionT/7)*8; food.y=H*.51+5;
+   if(actionT>100)finishFeed();
+ }
+ if(action==="ball"){
+   actionT++;
+   if(ball.phase==="flying"){
+     ball.x-=3.4; ball.y+=Math.sin(actionT/5)*1.5;
+     if(ball.x<W*.5+35){ball.phase="returning";toast("🐾 見つけた！持って帰ってくるよ！")}
+   }else if(ball.phase==="returning"){
+     ball.x+=(W*.5+100-ball.x)*.07; ball.y+=(H*.51+25-ball.y)*.07;
+     if(Math.hypot(ball.x-(W*.5+100),ball.y-(H*.51+25))<12)finishPlay();
+   }
+ }
+ if(action==="rest"){
+   actionT++;
+   if(actionT>150){
+     data.energy=Math.min(100,data.energy+32);data.health=Math.min(100,data.health+8);
+     data.hunger=Math.max(0,data.hunger-4);data.happy=Math.min(100,data.happy+5);
+     addXp(12);burst(W*.5,H*.51,"#9dbbff",12);toast("🌙 ぐっすり休んだ！元気いっぱい！");
+     action="none";actionT=0;
+   }
+ }
  if(data.age%600===0)save();
  draw();requestAnimationFrame(tick)
 }
