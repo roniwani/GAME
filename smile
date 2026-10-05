@@ -182,9 +182,9 @@
             <div class="message-sub"></div>
         </div>
         
-        <div class="slide-text slide1">いつも</div>
-        <div class="slide-text slide2">う<br>う</div>
-        <div class="slide-text slide3">う<br>一あ</div>
+        <div class="slide-text slide1">Thank you so much for always using smilehub.</div>
+        <div class="slide-text slide2">It looks like the release of smilehub v3 will be significantly delayed.<br>The reason is that there are no good Lua obfuscation tools available.</div>
+        <div class="slide-text slide3">Alternatively, SmileHub might be set to private.<br>This is regarding smilehubv2.</div>
         <div class="slide-text slide4">い<br>う</div>
         <div class="slide-text slide5">あ<br>う</div>
         <div class="slide-text slide6">い<br>う</div>
