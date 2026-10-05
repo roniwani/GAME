@@ -149,7 +149,7 @@ let WEAPONS = { ...BASE_WEAPONS };
 const WORLD_SIZE = 8000;
 const CENTER = WORLD_SIZE / 2;
 const INITIAL_ALLIES = 3;
-const ADMIN_CODE = '2020';
+const ADMIN_CODE = '2014';
 
 // ===== 難易度 =====
 const DIFFS = {
